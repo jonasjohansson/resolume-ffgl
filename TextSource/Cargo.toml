@@ -1,0 +1,15 @@
+[package]
+name = "text_source"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ffgl-core = { path = "../../../jonasjohansson-archive/ffgl-rs/ffgl-core" }
+gl = "0.14.0"
+gl_loader = "0.1.0"
+core-foundation = "0.10"
+core-graphics = "0.24"
+core-text = "20.1"
