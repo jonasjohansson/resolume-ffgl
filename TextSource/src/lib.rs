@@ -1,3 +1,4 @@
+mod params;
 mod plugin;
 
 use ffgl_core::{self, handler::simplified::SimpleFFGLHandler};
