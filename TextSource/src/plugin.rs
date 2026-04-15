@@ -55,6 +55,8 @@ static QUAD_VERTICES: [GLfloat; 16] = [
 pub struct TextSource {
     param_values: [f32; NUM_PARAMS],
     text: CString,
+    text_file_path: CString,
+    file_mod_time: Option<std::time::SystemTime>,
     dirty: bool,
     // Viewport size tracking (re-render when size changes)
     last_width: usize,
@@ -156,6 +158,8 @@ impl SimpleFFGLInstance for TextSource {
         Self {
             param_values,
             text: CString::new("Hello World").unwrap(),
+            text_file_path: CString::default(),
+            file_mod_time: None,
             dirty: true,
             last_width: 0,
             last_height: 0,
@@ -200,6 +204,7 @@ impl SimpleFFGLInstance for TextSource {
     fn get_text_param(&self, index: usize) -> *const c_char {
         match index {
             PARAM_TEXT => self.text.as_ptr(),
+            PARAM_TEXT_FILE => self.text_file_path.as_ptr(),
             _ => ptr::null(),
         }
     }
@@ -214,6 +219,13 @@ impl SimpleFFGLInstance for TextSource {
                     }
                 }
             }
+            PARAM_TEXT_FILE => {
+                if let Ok(cstr) = CString::new(value) {
+                    self.text_file_path = cstr;
+                    self.file_mod_time = None; // Force re-read on next draw
+                    self.dirty = true;
+                }
+            }
             _ => {}
         }
     }
@@ -226,6 +238,27 @@ impl SimpleFFGLInstance for TextSource {
             self.last_width = width;
             self.last_height = height;
             self.dirty = true;
+        }
+
+        // Live file watching: check if the text file changed
+        if !self.text_file_path.as_bytes().is_empty() {
+            if let Ok(path_str) = self.text_file_path.to_str() {
+                if !path_str.is_empty() {
+                    if let Ok(metadata) = std::fs::metadata(path_str) {
+                        if let Ok(mod_time) = metadata.modified() {
+                            if self.file_mod_time != Some(mod_time) {
+                                self.file_mod_time = Some(mod_time);
+                                if let Ok(contents) = std::fs::read_to_string(path_str) {
+                                    if let Ok(cstr) = CString::new(contents) {
+                                        self.text = cstr;
+                                        self.dirty = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Beat-reactive line cycling
@@ -319,6 +352,14 @@ impl TextSource {
         };
 
         let font_size = (pv[PARAM_FONT_SIZE] * 400.0).max(1.0);
+        let tracking = (pv[PARAM_TRACKING] - 0.5) * 40.0;
+        let leading = pv[PARAM_LEADING] * 4.0;
+        let alignment = pv[PARAM_ALIGNMENT].round() as u32;
+        let text_transform = pv[PARAM_TEXT_TRANSFORM].round() as u32;
+        let stroke_position = pv[PARAM_STROKE_POSITION].round() as u32;
+        let stroke_width = pv[PARAM_STROKE_WIDTH] * 20.0;
+        let shadow_x = (pv[PARAM_SHADOW_X] - 0.5) * 100.0;
+        let shadow_y = (pv[PARAM_SHADOW_Y] - 0.5) * 100.0;
 
         // When beat cycle is enabled, show only the current line
         let full_text = self.text.to_str().unwrap_or("").to_string();
@@ -333,31 +374,51 @@ impl TextSource {
             full_text
         };
 
+        // Apply text transform
+        let text = match text_transform {
+            1 => text.to_uppercase(),
+            2 => text.to_lowercase(),
+            3 => text
+                .split_whitespace()
+                .map(|w| {
+                    let mut c = w.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().to_string() + &c.as_str().to_lowercase(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => text,
+        };
+
         RenderParams {
             text,
             font_family,
             font_size: font_size as f64,
             color: [pv[PARAM_FILL_R], pv[PARAM_FILL_G], pv[PARAM_FILL_B], pv[PARAM_FILL_A]],
-            outline_enabled: pv[PARAM_OUTLINE_ENABLED] > 0.5,
-            outline_color: [
-                pv[PARAM_OUTLINE_R],
-                pv[PARAM_OUTLINE_G],
-                pv[PARAM_OUTLINE_B],
-                pv[PARAM_OUTLINE_A],
+            stroke_enabled: pv[PARAM_STROKE] > 0.5,
+            stroke_position,
+            stroke_color: [
+                pv[PARAM_STROKE_R],
+                pv[PARAM_STROKE_G],
+                pv[PARAM_STROKE_B],
+                pv[PARAM_STROKE_A],
             ],
-            outline_width: pv[PARAM_OUTLINE_WIDTH] * 20.0,
-            shadow_enabled: pv[PARAM_SHADOW_ENABLED] > 0.5,
+            stroke_width,
+            shadow_enabled: pv[PARAM_DROP_SHADOW] > 0.5,
             shadow_color: [
                 pv[PARAM_SHADOW_R],
                 pv[PARAM_SHADOW_G],
                 pv[PARAM_SHADOW_B],
                 pv[PARAM_SHADOW_A],
             ],
-            shadow_offset: pv[PARAM_SHADOW_OFFSET] * 50.0,
-            h_align: pv[PARAM_H_ALIGN].round() as u32,
+            shadow_x,
+            shadow_y,
+            alignment,
             v_align: pv[PARAM_V_ALIGN].round() as u32,
-            line_spacing: pv[PARAM_LINE_SPACING] * 4.0,
-            letter_spacing: (pv[PARAM_LETTER_SPACING] - 0.5) * 40.0,
+            leading,
+            tracking,
             position_x: pv[PARAM_POSITION_X],
             position_y: pv[PARAM_POSITION_Y],
         }

@@ -4,7 +4,7 @@ use core_foundation::number::CFNumber;
 use core_foundation::string::CFString;
 use core_graphics::base::kCGImageAlphaPremultipliedLast;
 use core_graphics::color_space::CGColorSpace;
-use core_graphics::context::{CGContext, CGTextDrawingMode};
+use core_graphics::context::{CGBlendMode, CGContext, CGTextDrawingMode};
 use core_graphics::geometry::{CGPoint, CGRect, CGSize};
 use core_text::font;
 use core_text::line::CTLine;
@@ -27,16 +27,18 @@ pub struct RenderParams {
     pub font_family: String,
     pub font_size: f64,
     pub color: [f32; 4],
-    pub outline_enabled: bool,
-    pub outline_color: [f32; 4],
-    pub outline_width: f32,
+    pub stroke_enabled: bool,
+    pub stroke_position: u32,    // 0=center, 1=outside, 2=inside
+    pub stroke_color: [f32; 4],
+    pub stroke_width: f32,
     pub shadow_enabled: bool,
     pub shadow_color: [f32; 4],
-    pub shadow_offset: f32,
-    pub h_align: u32,
+    pub shadow_x: f32,           // offset in points
+    pub shadow_y: f32,           // offset in points
+    pub alignment: u32,          // 0=left, 1=center, 2=right, 3=justify
     pub v_align: u32,
-    pub line_spacing: f32,
-    pub letter_spacing: f32,
+    pub leading: f32,
+    pub tracking: f32,
     pub position_x: f32,
     pub position_y: f32,
 }
@@ -92,7 +94,7 @@ impl TextRenderer {
         let text_lines: Vec<&str> = params.text.split('\n').collect();
         let ct_lines: Vec<CTLine> = text_lines
             .iter()
-            .map(|line_str| build_ct_line(line_str, &ct_font, params.letter_spacing))
+            .map(|line_str| build_ct_line(line_str, &ct_font, params.tracking))
             .collect();
 
         // --- Measure each line -----------------------------------------------
@@ -118,7 +120,7 @@ impl TextRenderer {
 
         // --- Compute total text block height ---------------------------------
         let line_count = measures.len();
-        let spacing_multiplier = params.line_spacing as f64;
+        let spacing_multiplier = params.leading as f64;
         let mut total_height = 0.0_f64;
         for (i, m) in measures.iter().enumerate() {
             total_height += m.ascent + m.descent;
@@ -149,6 +151,7 @@ impl TextRenderer {
         let offset_x = (params.position_x as f64 - 0.5) * canvas_w;
 
         // --- Helper: draw all lines at computed positions ---------------------
+        let h_align = params.alignment;
         let draw_lines =
             |ctx: &CGContext, dx: f64, dy: f64| {
                 let origin_y = base_y_cg + dy;
@@ -172,9 +175,12 @@ impl TextRenderer {
                     let baseline_y = origin_y + total_height - acc;
 
                     // Horizontal position
-                    let x = match params.h_align {
+                    let x = match h_align {
                         0 => 0.0,                              // left
                         2 => canvas_w - m.width,               // right
+                        // TODO: Justify (3) — CTLine justified API not available in
+                        // the core-text Rust crate; falls back to left-aligned for now.
+                        3 => 0.0,                              // justify (fallback: left)
                         _ => (canvas_w - m.width) / 2.0,       // center
                     } + offset_x
                         + dx;
@@ -186,31 +192,98 @@ impl TextRenderer {
                 }
             };
 
-        // --- Shadow pass -----------------------------------------------------
+        // --- Shadow pass (always first if enabled) ---------------------------
         if params.shadow_enabled {
             let sc = params.shadow_color;
-            let so = params.shadow_offset as f64;
+            let sx = params.shadow_x as f64;
+            let sy = params.shadow_y as f64;
 
             ctx.save();
             ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
             ctx.set_rgb_fill_color(sc[0] as f64, sc[1] as f64, sc[2] as f64, sc[3] as f64);
-            draw_lines(&ctx, so, -so);
+            draw_lines(&ctx, sx, -sy);
             ctx.restore();
         }
 
-        // --- Outline pass ----------------------------------------------------
-        if params.outline_enabled {
-            let oc = params.outline_color;
-            ctx.save();
-            ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextStroke);
-            ctx.set_rgb_stroke_color(oc[0] as f64, oc[1] as f64, oc[2] as f64, oc[3] as f64);
-            ctx.set_line_width(params.outline_width as f64);
-            draw_lines(&ctx, 0.0, 0.0);
-            ctx.restore();
-        }
+        // --- Stroke + Fill passes (order depends on stroke position) ---------
+        if params.stroke_enabled {
+            let sc = params.stroke_color;
+            let sw = params.stroke_width as f64;
+            let fc = params.color;
 
-        // --- Fill pass -------------------------------------------------------
-        {
+            match params.stroke_position {
+                0 => {
+                    // Center: standard stroke centered on the path, then fill
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextStroke);
+                    ctx.set_rgb_stroke_color(
+                        sc[0] as f64, sc[1] as f64, sc[2] as f64, sc[3] as f64,
+                    );
+                    ctx.set_line_width(sw);
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                    // Fill on top
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
+                    ctx.set_rgb_fill_color(
+                        fc[0] as f64, fc[1] as f64, fc[2] as f64, fc[3] as f64,
+                    );
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                }
+                1 => {
+                    // Outside: stroke at 2x width, then fill on top covers inner half
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextStroke);
+                    ctx.set_rgb_stroke_color(
+                        sc[0] as f64, sc[1] as f64, sc[2] as f64, sc[3] as f64,
+                    );
+                    ctx.set_line_width(sw * 2.0);
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                    // Fill on top covers inner half of the stroke
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
+                    ctx.set_rgb_fill_color(
+                        fc[0] as f64, fc[1] as f64, fc[2] as f64, fc[3] as f64,
+                    );
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                }
+                2 => {
+                    // Inside: fill first, then stroke with SourceAtop blend
+                    // so stroke only appears inside existing (filled) pixels
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
+                    ctx.set_rgb_fill_color(
+                        fc[0] as f64, fc[1] as f64, fc[2] as f64, fc[3] as f64,
+                    );
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                    // Stroke with SourceAtop: only draws inside existing pixels
+                    ctx.save();
+                    ctx.set_blend_mode(CGBlendMode::SourceAtop);
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextStroke);
+                    ctx.set_rgb_stroke_color(
+                        sc[0] as f64, sc[1] as f64, sc[2] as f64, sc[3] as f64,
+                    );
+                    ctx.set_line_width(sw * 2.0);
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                }
+                _ => {
+                    // Fallback: just fill
+                    ctx.save();
+                    ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
+                    ctx.set_rgb_fill_color(
+                        fc[0] as f64, fc[1] as f64, fc[2] as f64, fc[3] as f64,
+                    );
+                    draw_lines(&ctx, 0.0, 0.0);
+                    ctx.restore();
+                }
+            }
+        } else {
+            // No stroke, just fill
             let fc = params.color;
             ctx.save();
             ctx.set_text_drawing_mode(CGTextDrawingMode::CGTextFill);
@@ -235,8 +308,8 @@ impl TextRenderer {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a CTLine from a string with the given font and letter spacing.
-fn build_ct_line(text: &str, ct_font: &core_text::font::CTFont, letter_spacing: f32) -> CTLine {
+/// Build a CTLine from a string with the given font and tracking (letter spacing).
+fn build_ct_line(text: &str, ct_font: &core_text::font::CTFont, tracking: f32) -> CTLine {
     let cf_string = CFString::new(text);
     let mut attr_string = CFMutableAttributedString::new();
     let range_zero = CFRange::init(0, 0);
@@ -261,10 +334,10 @@ fn build_ct_line(text: &str, ct_font: &core_text::font::CTFont, letter_spacing: 
         );
     }
 
-    // Set kern (letter spacing) if non-zero
-    if letter_spacing.abs() > f32::EPSILON {
+    // Set kern (tracking) if non-zero
+    if tracking.abs() > f32::EPSILON {
         unsafe {
-            let kern = CFNumber::from(letter_spacing as f64);
+            let kern = CFNumber::from(tracking as f64);
             attr_string.set_attribute::<CFType>(
                 full_range,
                 kCTKernAttributeName,
