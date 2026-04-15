@@ -56,6 +56,9 @@ pub struct TextSource {
     param_values: [f32; NUM_PARAMS],
     text: CString,
     dirty: bool,
+    // Beat-reactive line cycling
+    current_line: usize,
+    last_bar_phase: f32,
     // OpenGL state
     texture_id: GLuint,
     vao: GLuint,
@@ -151,6 +154,8 @@ impl SimpleFFGLInstance for TextSource {
             param_values,
             text: CString::new("Hello World").unwrap(),
             dirty: true,
+            current_line: 0,
+            last_bar_phase: 0.0,
             texture_id,
             vao,
             vbo,
@@ -206,6 +211,21 @@ impl SimpleFFGLInstance for TextSource {
 
     fn draw(&mut self, data: &FFGLData, _frame_data: GLInput) {
         let (width, height) = (data.viewport.width as usize, data.viewport.height as usize);
+
+        // Beat-reactive line cycling
+        if self.param_values[PARAM_BEAT_CYCLE] > 0.5 {
+            let bar_phase = data.host_beat.barPhase;
+            // Detect beat boundary: barPhase wrapped from near 1.0 back to near 0.0
+            if bar_phase < 0.1 && self.last_bar_phase > 0.9 {
+                let full_text = self.text.to_str().unwrap_or("");
+                let line_count = full_text.split('\n').count();
+                if line_count > 1 {
+                    self.current_line = (self.current_line + 1) % line_count;
+                    self.dirty = true;
+                }
+            }
+            self.last_bar_phase = bar_phase;
+        }
 
         if self.dirty && width > 0 && height > 0 {
             self.dirty = false;
@@ -284,8 +304,21 @@ impl TextSource {
 
         let font_size = (pv[PARAM_FONT_SIZE] * 400.0).max(1.0);
 
+        // When beat cycle is enabled, show only the current line
+        let full_text = self.text.to_str().unwrap_or("").to_string();
+        let text = if pv[PARAM_BEAT_CYCLE] > 0.5 {
+            let lines: Vec<&str> = full_text.split('\n').collect();
+            if lines.len() > 1 {
+                lines[self.current_line % lines.len()].to_string()
+            } else {
+                full_text
+            }
+        } else {
+            full_text
+        };
+
         RenderParams {
-            text: self.text.to_str().unwrap_or("").to_string(),
+            text,
             font_family,
             font_size: font_size as f64,
             color: [pv[PARAM_FILL_R], pv[PARAM_FILL_G], pv[PARAM_FILL_B], pv[PARAM_FILL_A]],
