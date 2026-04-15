@@ -124,11 +124,13 @@ pub static PARAM_INFOS: LazyLock<Vec<SimpleParamInfo>> = LazyLock::new(|| {
             elements: Some(font_elements),
             ..Default::default()
         },
-        // 5 – Font Size
+        // 5 – Font Size (pt)
         SimpleParamInfo {
             name: CString::new("Font Size").unwrap(),
-            param_type: ParameterTypes::Standard,
-            default: Some(0.25),
+            param_type: ParameterTypes::Integer,
+            default: Some(72.0),
+            min: Some(1.0),
+            max: Some(400.0),
             ..Default::default()
         },
         // 6 – Tracking
@@ -235,11 +237,13 @@ pub static PARAM_INFOS: LazyLock<Vec<SimpleParamInfo>> = LazyLock::new(|| {
             ]),
             ..Default::default()
         },
-        // 18 – Stroke Width
+        // 18 – Stroke Width (px)
         SimpleParamInfo {
             name: CString::new("Stroke Width").unwrap(),
-            param_type: ParameterTypes::Standard,
-            default: Some(0.1),
+            param_type: ParameterTypes::Integer,
+            default: Some(2.0),
+            min: Some(1.0),
+            max: Some(50.0),
             ..Default::default()
         },
         // 19 – Stroke R

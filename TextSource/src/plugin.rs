@@ -351,13 +351,13 @@ impl TextSource {
             }
         };
 
-        let font_size = (pv[PARAM_FONT_SIZE] * 400.0).max(1.0);
+        let font_size = pv[PARAM_FONT_SIZE].max(1.0);
         let tracking = (pv[PARAM_TRACKING] - 0.5) * 40.0;
         let leading = pv[PARAM_LEADING] * 4.0;
         let alignment = pv[PARAM_ALIGNMENT].round() as u32;
         let text_transform = pv[PARAM_TEXT_TRANSFORM].round() as u32;
         let stroke_position = pv[PARAM_STROKE_POSITION].round() as u32;
-        let stroke_width = pv[PARAM_STROKE_WIDTH] * 20.0;
+        let stroke_width = pv[PARAM_STROKE_WIDTH].max(1.0);
         let shadow_x = (pv[PARAM_SHADOW_X] - 0.5) * 100.0;
         let shadow_y = (pv[PARAM_SHADOW_Y] - 0.5) * 100.0;
 
