@@ -51,6 +51,15 @@ impl TextRenderer {
         let w = width;
         let h = height;
 
+        // If text is empty, return a transparent buffer without touching CoreText
+        if params.text.is_empty() {
+            return TextRenderer {
+                width: w,
+                height: h,
+                pixels: vec![0u8; w * h * 4],
+            };
+        }
+
         // --- Create bitmap context (RGBA, premultiplied alpha) ---------------
         let cs = CGColorSpace::create_device_rgb();
         let bytes_per_row = w * 4;

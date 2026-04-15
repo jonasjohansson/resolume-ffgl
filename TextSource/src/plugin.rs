@@ -56,6 +56,9 @@ pub struct TextSource {
     param_values: [f32; NUM_PARAMS],
     text: CString,
     dirty: bool,
+    // Viewport size tracking (re-render when size changes)
+    last_width: usize,
+    last_height: usize,
     // Beat-reactive line cycling
     current_line: usize,
     last_bar_phase: f32,
@@ -154,6 +157,8 @@ impl SimpleFFGLInstance for TextSource {
             param_values,
             text: CString::new("Hello World").unwrap(),
             dirty: true,
+            last_width: 0,
+            last_height: 0,
             current_line: 0,
             last_bar_phase: 0.0,
             texture_id,
@@ -186,8 +191,10 @@ impl SimpleFFGLInstance for TextSource {
     }
 
     fn set_param(&mut self, index: usize, value: f32) {
-        self.param_values[index] = value;
-        self.dirty = true;
+        if (self.param_values[index] - value).abs() > f32::EPSILON {
+            self.param_values[index] = value;
+            self.dirty = true;
+        }
     }
 
     fn get_text_param(&self, index: usize) -> *const c_char {
@@ -201,8 +208,10 @@ impl SimpleFFGLInstance for TextSource {
         match index {
             PARAM_TEXT => {
                 if let Ok(cstr) = CString::new(value) {
-                    self.text = cstr;
-                    self.dirty = true;
+                    if cstr != self.text {
+                        self.text = cstr;
+                        self.dirty = true;
+                    }
                 }
             }
             _ => {}
@@ -211,6 +220,13 @@ impl SimpleFFGLInstance for TextSource {
 
     fn draw(&mut self, data: &FFGLData, _frame_data: GLInput) {
         let (width, height) = (data.viewport.width as usize, data.viewport.height as usize);
+
+        // Mark dirty if viewport size changed
+        if width != self.last_width || height != self.last_height {
+            self.last_width = width;
+            self.last_height = height;
+            self.dirty = true;
+        }
 
         // Beat-reactive line cycling
         if self.param_values[PARAM_BEAT_CYCLE] > 0.5 {
