@@ -1,5 +1,5 @@
 /*{
-    "DESCRIPTION": "Watercolor paint effect with gradient mask - Kuwahara painterly smoothing mimicking Resolume Acuarela",
+    "DESCRIPTION": "Watercolor paint effect with gradient mask",
     "CREDIT": "Jonas Johansson",
     "ISFVSN": "2",
     "CATEGORIES": ["Effect"],

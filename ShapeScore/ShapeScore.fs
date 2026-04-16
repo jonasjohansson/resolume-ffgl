@@ -1,5 +1,5 @@
 /*{
-    "DESCRIPTION": "Graphic score generator - 3 tracks of organic shapes",
+    "DESCRIPTION": "Graphic score generator with 3 tracks of organic shapes",
     "CREDIT": "Jonas Johansson",
     "ISFVSN": "2",
     "CATEGORIES": ["Generator"],

@@ -1,5 +1,5 @@
 /*{
-    "DESCRIPTION": "Domain-warped FBM - organically warps source content with animated noise",
+    "DESCRIPTION": "Organically warps source content with animated noise",
     "CREDIT": "Jonas Johansson",
     "ISFVSN": "2",
     "CATEGORIES": ["Effect"],

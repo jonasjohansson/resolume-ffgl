@@ -1,5 +1,5 @@
 /*{
-    "DESCRIPTION": "Smoke dissipation - content wisps away like rising smoke with animated turbulence and gradient mask",
+    "DESCRIPTION": "Content wisps away like rising smoke with animated turbulence",
     "CREDIT": "Jonas Johansson",
     "ISFVSN": "2",
     "CATEGORIES": ["Effect"],

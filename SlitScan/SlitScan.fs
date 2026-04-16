@@ -1,5 +1,5 @@
 /*{
-    "DESCRIPTION": "Slit screen - repeats boundary pixels outward from a gradient mask edge",
+    "DESCRIPTION": "Slit scan - repeats boundary pixels outward from a gradient mask edge",
     "CREDIT": "Jonas Johansson",
     "ISFVSN": "2",
     "CATEGORIES": ["Effect"],
