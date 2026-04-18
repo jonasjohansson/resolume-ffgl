@@ -64,6 +64,11 @@ pub struct TextSource {
     // Beat-reactive line cycling
     current_line: usize,
     last_bar_phase: f32,
+    accumulated_bars: f32,
+    last_cycle_tick: i32,
+    cycle_finished: bool,
+    last_draw_instant: Option<std::time::Instant>,
+    reset_pending: bool,
     // OpenGL state
     texture_id: GLuint,
     vao: GLuint,
@@ -165,6 +170,11 @@ impl SimpleFFGLInstance for TextSource {
             last_height: 0,
             current_line: 0,
             last_bar_phase: 0.0,
+            accumulated_bars: 0.0,
+            last_cycle_tick: -1,
+            cycle_finished: false,
+            last_draw_instant: None,
+            reset_pending: false,
             texture_id,
             vao,
             vbo,
@@ -198,6 +208,9 @@ impl SimpleFFGLInstance for TextSource {
         if (self.param_values[index] - value).abs() > f32::EPSILON {
             self.param_values[index] = value;
             self.dirty = true;
+            if index == PARAM_CYCLE_RESET {
+                self.reset_pending = true;
+            }
         }
     }
 
@@ -261,19 +274,64 @@ impl SimpleFFGLInstance for TextSource {
             }
         }
 
+        // Reset cycle on:
+        //  (a) Explicit Restart Cycle trigger (set via set_param)
+        //  (b) >200ms gap between draws (clip went inactive→active,
+        //      e.g. column switch back onto this clip)
+        let now = std::time::Instant::now();
+        let draw_gap = match self.last_draw_instant {
+            Some(prev) => now.duration_since(prev).as_millis() > 200,
+            None => false,
+        };
+        if self.reset_pending || draw_gap {
+            self.current_line = 0;
+            self.accumulated_bars = 0.0;
+            self.last_cycle_tick = -1;
+            self.cycle_finished = false;
+            self.last_bar_phase = data.host_beat.barPhase;
+            self.dirty = true;
+            self.reset_pending = false;
+        }
+        self.last_draw_instant = Some(now);
+
         // Beat-reactive line cycling
         if self.param_values[PARAM_BEAT_CYCLE] > 0.5 {
             let bar_phase = data.host_beat.barPhase;
-            // Detect beat boundary: barPhase wrapped from near 1.0 back to near 0.0
-            if bar_phase < 0.1 && self.last_bar_phase > 0.9 {
-                let full_text = self.text.to_str().unwrap_or("");
-                let line_count = full_text.split('\n').count();
-                if line_count > 1 {
-                    self.current_line = (self.current_line + 1) % line_count;
-                    self.dirty = true;
-                }
-            }
+            let delta = if bar_phase >= self.last_bar_phase {
+                bar_phase - self.last_bar_phase
+            } else {
+                (1.0 - self.last_bar_phase) + bar_phase
+            };
+            self.accumulated_bars += delta;
             self.last_bar_phase = bar_phase;
+
+            let interval = cycle_duration_bars(
+                self.param_values[PARAM_CYCLE_DURATION].round() as u32,
+            );
+            let tick = (self.accumulated_bars / interval).floor() as i32;
+            if tick != self.last_cycle_tick {
+                if self.last_cycle_tick >= 0 && !self.cycle_finished {
+                    let full_text = self.text.to_str().unwrap_or("");
+                    let line_count = full_text.split('\n').count();
+                    if line_count > 1 {
+                        let mode = self.param_values[PARAM_CYCLE_MODE].round() as u32;
+                        let next = self.current_line + 1;
+                        if next >= line_count {
+                            match mode {
+                                CYCLE_MODE_LOOP => self.current_line = 0,
+                                _ => self.cycle_finished = true, // Hold / Black
+                            }
+                        } else {
+                            self.current_line = next;
+                        }
+                        self.dirty = true;
+                    }
+                }
+                self.last_cycle_tick = tick;
+            }
+        } else {
+            self.last_cycle_tick = -1;
+            self.accumulated_bars = 0.0;
         }
 
         if self.dirty && width > 0 && height > 0 {
@@ -366,13 +424,21 @@ impl TextSource {
         let text = if pv[PARAM_BEAT_CYCLE] > 0.5 {
             let lines: Vec<&str> = full_text.split('\n').collect();
             if lines.len() > 1 {
-                lines[self.current_line % lines.len()].to_string()
+                let mode = pv[PARAM_CYCLE_MODE].round() as u32;
+                if self.cycle_finished && mode == CYCLE_MODE_BLACK {
+                    String::new()
+                } else {
+                    lines[self.current_line % lines.len()].to_string()
+                }
             } else {
                 full_text
             }
         } else {
             full_text
         };
+
+        // Expand literal "\n" escape sequences into real newlines
+        let text = text.replace("\\n", "\n");
 
         // Apply text transform
         let text = match text_transform {

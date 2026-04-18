@@ -11,33 +11,66 @@ pub const PARAM_TEXT: usize = 0;
 pub const PARAM_TEXT_FILE: usize = 1;
 pub const PARAM_TEXT_TRANSFORM: usize = 2;
 pub const PARAM_BEAT_CYCLE: usize = 3;
-pub const PARAM_FONT: usize = 4;
-pub const PARAM_FONT_SIZE: usize = 5;
-pub const PARAM_TRACKING: usize = 6;
-pub const PARAM_LEADING: usize = 7;
-pub const PARAM_ALIGNMENT: usize = 8;
-pub const PARAM_V_ALIGN: usize = 9;
-pub const PARAM_POSITION_X: usize = 10;
-pub const PARAM_POSITION_Y: usize = 11;
-pub const PARAM_FILL_R: usize = 12;
-pub const PARAM_FILL_G: usize = 13;
-pub const PARAM_FILL_B: usize = 14;
-pub const PARAM_FILL_A: usize = 15;
-pub const PARAM_STROKE: usize = 16;
-pub const PARAM_STROKE_POSITION: usize = 17;
-pub const PARAM_STROKE_WIDTH: usize = 18;
-pub const PARAM_STROKE_R: usize = 19;
-pub const PARAM_STROKE_G: usize = 20;
-pub const PARAM_STROKE_B: usize = 21;
-pub const PARAM_STROKE_A: usize = 22;
-pub const PARAM_DROP_SHADOW: usize = 23;
-pub const PARAM_SHADOW_X: usize = 24;
-pub const PARAM_SHADOW_Y: usize = 25;
-pub const PARAM_SHADOW_R: usize = 26;
-pub const PARAM_SHADOW_G: usize = 27;
-pub const PARAM_SHADOW_B: usize = 28;
-pub const PARAM_SHADOW_A: usize = 29;
-pub const NUM_PARAMS: usize = 30;
+pub const PARAM_CYCLE_DURATION: usize = 4;
+pub const PARAM_CYCLE_MODE: usize = 5;
+pub const PARAM_CYCLE_RESET: usize = 6;
+pub const PARAM_FONT: usize = 7;
+pub const PARAM_FONT_SIZE: usize = 8;
+pub const PARAM_TRACKING: usize = 9;
+pub const PARAM_LEADING: usize = 10;
+pub const PARAM_ALIGNMENT: usize = 11;
+pub const PARAM_V_ALIGN: usize = 12;
+pub const PARAM_POSITION_X: usize = 13;
+pub const PARAM_POSITION_Y: usize = 14;
+pub const PARAM_FILL_R: usize = 15;
+pub const PARAM_FILL_G: usize = 16;
+pub const PARAM_FILL_B: usize = 17;
+pub const PARAM_FILL_A: usize = 18;
+pub const PARAM_STROKE: usize = 19;
+pub const PARAM_STROKE_POSITION: usize = 20;
+pub const PARAM_STROKE_WIDTH: usize = 21;
+pub const PARAM_STROKE_R: usize = 22;
+pub const PARAM_STROKE_G: usize = 23;
+pub const PARAM_STROKE_B: usize = 24;
+pub const PARAM_STROKE_A: usize = 25;
+pub const PARAM_DROP_SHADOW: usize = 26;
+pub const PARAM_SHADOW_X: usize = 27;
+pub const PARAM_SHADOW_Y: usize = 28;
+pub const PARAM_SHADOW_R: usize = 29;
+pub const PARAM_SHADOW_G: usize = 30;
+pub const PARAM_SHADOW_B: usize = 31;
+pub const PARAM_SHADOW_A: usize = 32;
+pub const NUM_PARAMS: usize = 33;
+
+// Cycle mode option values
+pub const CYCLE_MODE_LOOP: u32 = 0;
+pub const CYCLE_MODE_HOLD: u32 = 1;
+pub const CYCLE_MODE_BLACK: u32 = 2;
+
+// Cycle duration option indices (as rounded f32 values)
+pub const CYCLE_QUARTER_BEAT: u32 = 0;
+pub const CYCLE_HALF_BEAT: u32 = 1;
+pub const CYCLE_1_BEAT: u32 = 2;
+pub const CYCLE_2_BEATS: u32 = 3;
+pub const CYCLE_1_BAR: u32 = 4;
+pub const CYCLE_2_BARS: u32 = 5;
+pub const CYCLE_4_BARS: u32 = 6;
+pub const CYCLE_8_BARS: u32 = 7;
+
+/// Convert cycle duration option index to interval in bars (assuming 4 beats/bar).
+pub fn cycle_duration_bars(option: u32) -> f32 {
+    match option {
+        CYCLE_QUARTER_BEAT => 0.0625,
+        CYCLE_HALF_BEAT => 0.125,
+        CYCLE_1_BEAT => 0.25,
+        CYCLE_2_BEATS => 0.5,
+        CYCLE_1_BAR => 1.0,
+        CYCLE_2_BARS => 2.0,
+        CYCLE_4_BARS => 4.0,
+        CYCLE_8_BARS => 8.0,
+        _ => 1.0,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Font enumeration via CoreText
@@ -58,6 +91,7 @@ fn build_font_elements() -> Vec<(CString, f32)> {
     }
 
     names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    names.dedup();
 
     let count = names.len().max(1);
     names
@@ -116,7 +150,43 @@ pub static PARAM_INFOS: LazyLock<Vec<SimpleParamInfo>> = LazyLock::new(|| {
             default: Some(0.0),
             ..Default::default()
         },
-        // 4 – Font
+        // 4 – Cycle Duration
+        SimpleParamInfo {
+            name: CString::new("Cycle Duration").unwrap(),
+            param_type: ParameterTypes::Option,
+            default: Some(CYCLE_1_BAR as f32),
+            elements: Some(vec![
+                (CString::new("1/4 Beat").unwrap(), CYCLE_QUARTER_BEAT as f32),
+                (CString::new("1/2 Beat").unwrap(), CYCLE_HALF_BEAT as f32),
+                (CString::new("1 Beat").unwrap(), CYCLE_1_BEAT as f32),
+                (CString::new("2 Beats").unwrap(), CYCLE_2_BEATS as f32),
+                (CString::new("1 Bar").unwrap(), CYCLE_1_BAR as f32),
+                (CString::new("2 Bars").unwrap(), CYCLE_2_BARS as f32),
+                (CString::new("4 Bars").unwrap(), CYCLE_4_BARS as f32),
+                (CString::new("8 Bars").unwrap(), CYCLE_8_BARS as f32),
+            ]),
+            ..Default::default()
+        },
+        // 5 – Cycle Mode (what happens after last line)
+        SimpleParamInfo {
+            name: CString::new("Cycle Mode").unwrap(),
+            param_type: ParameterTypes::Option,
+            default: Some(CYCLE_MODE_LOOP as f32),
+            elements: Some(vec![
+                (CString::new("Loop").unwrap(), CYCLE_MODE_LOOP as f32),
+                (CString::new("Hold Last").unwrap(), CYCLE_MODE_HOLD as f32),
+                (CString::new("Black").unwrap(), CYCLE_MODE_BLACK as f32),
+            ]),
+            ..Default::default()
+        },
+        // 6 – Cycle Reset (trigger)
+        SimpleParamInfo {
+            name: CString::new("Restart Cycle").unwrap(),
+            param_type: ParameterTypes::Event,
+            default: Some(0.0),
+            ..Default::default()
+        },
+        // 7 – Font
         SimpleParamInfo {
             name: CString::new("Font").unwrap(),
             param_type: ParameterTypes::Option,
