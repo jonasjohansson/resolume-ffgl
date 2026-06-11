@@ -14,6 +14,7 @@ Each effect lives in its own folder with the `.fs` source and compiled `.bundle`
 | EnergyPulse | Expanding pulse that illuminates shapes as it sweeps through |
 | GhostTrail | Ethereal ghost copies drifting from source shapes |
 | GradientAlpha | Gradient-based alpha control |
+| InstaCrop | Centered pixel crop with black letterbox — set visible area in pixels (e.g. 1080×1440) |
 | PulseRings | Concentric rings rippling outward from shape edges |
 | ShapeGen | Graphic score generator with 3 tracks of organic shapes |
 | SlitScreen | Repeats boundary pixels outward from a gradient mask edge |

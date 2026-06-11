@@ -4,7 +4,7 @@ set -e
 # Build all ISF shaders into FFGL bundles
 # Requires ffgl-rs at ~/Documents/GitHub/ffgl-rs
 
-FFGL_RS="$HOME/Documents/GitHub/ffgl-rs"
+FFGL_RS="${FFGL_RS:-$HOME/Documents/GitHub/org/jonasjohansson-archive/ffgl-rs}"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -d "$FFGL_RS" ]; then
